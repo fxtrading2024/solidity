@@ -77,32 +77,31 @@ public:
 	/// otherwise it doesn't.
 	bool dominates(V const& _a, V const& _b) const
 	{
-		try {
-			solAssert(!m_vertexIndices.empty());
-			solAssert(!m_immediateDominators.empty());
+		solAssert(!m_vertexIndices.empty());
+		solAssert(!m_immediateDominators.empty());
 
-			size_t aIdx = m_vertexIndices.at(_a);
-			size_t bIdx = m_vertexIndices.at(_b);
+		solAssert(m_vertexIndices.count(_a) && m_vertexIndices.count(_b));
+		size_t aIdx = m_vertexIndices.at(_a);
+		size_t bIdx = m_vertexIndices.at(_b);
 
-			if (aIdx == bIdx)
+		if (aIdx == bIdx)
+			return true;
+
+		solAssert(aIdx < m_immediateDominators.size() && bIdx < m_immediateDominators.size());
+		size_t idomIdx = m_immediateDominators.at(bIdx);
+		while (idomIdx != 0)
+		{
+			solAssert(idomIdx < m_immediateDominators.size());
+			if (idomIdx == aIdx)
 				return true;
-
-			size_t idomIdx = m_immediateDominators.at(bIdx);
-			while (idomIdx != 0)
-			{
-				if (idomIdx == aIdx)
-					return true;
-				solAssert(m_immediateDominators.at(idomIdx) < idomIdx);
-				idomIdx = m_immediateDominators[idomIdx];
-			}
-			// Now that we reached the entry node (i.e. idomIdx = 0),
-			// either ``aIdx == 0`` or it does not dominate the other node.
-			solAssert(idomIdx == 0, "");
-			return aIdx == 0;
+			// The index of the immediate dominator of a vertex is always less than the index of the vertex itself.
+			solAssert(m_immediateDominators.at(idomIdx) < idomIdx);
+			idomIdx = m_immediateDominators[idomIdx];
 		}
-		catch (std::out_of_range const&) {
-			solThrow(util::ElementNotFound, "Vertex not found.");
-		}
+		// Now that we reached the entry node (i.e. idomIdx = 0),
+		// either ``aIdx == 0`` or it does not dominate the other node.
+		solAssert(idomIdx == 0, "");
+		return aIdx == 0;
 	}
 
 	/// Find all dominators of a node _v
@@ -110,35 +109,32 @@ public:
 	/// @note for a vertex ``_v``, the _v’s inclusion in the set of dominators of ``_v`` is implicit.
 	std::vector<V const*>  dominatorsOf(V const& _v) const
 	{
-		try
-		{
-			solAssert(!m_vertices.empty());
-			solAssert(!m_vertexIndices.empty());
-			solAssert(!m_immediateDominators.empty());
+		solAssert(!m_vertices.empty());
+		solAssert(!m_vertexIndices.empty());
+		solAssert(!m_immediateDominators.empty());
 
-			std::vector<V const*> dominators{};
-			// No one dominates the entry vertex and we consider self-dominance implicit
-			// i.e. all nodes already dominates itself.
-			if (m_vertexIndices.at(_v) == 0)
-				return dominators;
-
-			size_t idomIdx = m_immediateDominators.at(m_vertexIndices.at(_v));
-			while (idomIdx != 0)
-			{
-				solAssert(m_immediateDominators.at(idomIdx) < idomIdx);
-				dominators.emplace_back(&m_vertices.at(idomIdx));
-				idomIdx = m_immediateDominators[idomIdx];
-			}
-			// The loop above discovers the dominators in the reverse order
-			// i.e. from the given vertex upwards to the entry node (the root of the dominator tree).
-			// And the entry vertex always dominates all other vertices.
-			dominators.emplace_back(&m_vertices[0]);
-
+		std::vector<V const*> dominators{};
+		solAssert(m_vertexIndices.count(_v));
+		// No one dominates the entry vertex and we consider self-dominance implicit
+		// i.e. all nodes already dominates itself.
+		if (m_vertexIndices.at(_v) == 0)
 			return dominators;
+
+		solAssert(m_vertexIndices.at(_v) < m_immediateDominators.size());
+		size_t idomIdx = m_immediateDominators.at(m_vertexIndices.at(_v));
+		solAssert(idomIdx < m_immediateDominators.size());
+		while (idomIdx != 0)
+		{
+			solAssert(m_immediateDominators.at(idomIdx) < idomIdx);
+			dominators.emplace_back(&m_vertices.at(idomIdx));
+			idomIdx = m_immediateDominators[idomIdx];
 		}
-		catch (std::out_of_range const&) {
-			solThrow(util::ElementNotFound, "Vertex not found.");
-		}
+		// The loop above discovers the dominators in the reverse order
+		// i.e. from the given vertex upwards to the entry node (the root of the dominator tree).
+		// And the entry vertex always dominates all other vertices.
+		dominators.emplace_back(&m_vertices[0]);
+
+		return dominators;
 	}
 
 	/// Path compression updates the ancestors of vertices along

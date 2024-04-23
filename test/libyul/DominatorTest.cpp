@@ -625,24 +625,6 @@ BOOST_FIXTURE_TEST_CASE(collect_all_dominators_of_a_vertex, DominatorFinderFixtu
 	BOOST_TEST(dominatorsByVertexName(dominatorFinder.dominatorsOf(*test.vertices["H"])) == std::vector<std::string>({"G", "C", "B", "A"}));
 }
 
-BOOST_FIXTURE_TEST_CASE(dominators_of_a_non_existent_vertex, DominatorFinderFixture)
-{
-	DominatorFinderTest test(
-		{"A", "B", "C", "D"},
-		{
-			Edge("A", "B"),
-			Edge("B", "C"),
-			Edge("B", "D"),
-		},
-		{},
-		{},
-		{}
-	);
-
-	TestDominatorFinder dominatorFinder(*test.entry, test.numVertices);
-	BOOST_CHECK_THROW(dominatorsByVertexName(dominatorFinder.dominatorsOf(TestVertex{"Z", {}})), util::ElementNotFound);
-}
-
 BOOST_FIXTURE_TEST_CASE(check_dominance, DominatorFinderFixture)
 {
 	//            A
@@ -733,30 +715,10 @@ BOOST_FIXTURE_TEST_CASE(check_dominance, DominatorFinderFixture)
 				(expectedDominanceByVertex[i][j] ? "" : " not") +
 				" dominates vertex " + reverseDFSIndicesMap[j] + " (" + std::to_string(j) + ") but returned: " +
 				std::to_string(result)
-            );
+			);
 		}
 	}
 }
-
-BOOST_FIXTURE_TEST_CASE(check_dominance_of_non_existent_vertex, DominatorFinderFixture)
-{
-	DominatorFinderTest test(
-		{"A", "B", "C", "D"},
-		{
-			Edge("A", "B"),
-			Edge("B", "C"),
-			Edge("B", "D"),
-		},
-		{},
-		{},
-		{}
-	);
-
-	TestDominatorFinder dominatorFinder(*test.entry, test.numVertices);
-	BOOST_CHECK_THROW(dominatorFinder.dominates(TestVertex{"Z", {}}, *test.vertices["A"]), util::ElementNotFound);
-}
-
-
 
 BOOST_AUTO_TEST_SUITE_END()
 
