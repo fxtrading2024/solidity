@@ -242,15 +242,12 @@ private:
 			// Inverting those steps ensures that a bucket is only processed once and
 			// it does not need to be erased.
 			// The optimization proposal is available here: https://jgaa.info/accepted/2006/GeorgiadisTarjanWerneck2006.10.1.pdf pg.77
-			ranges::for_each(
-				bucket[wIdx],
-				[&](size_t vIdx)
-				{
-					size_t uIdx = eval(vIdx);
-					solAssert(uIdx <= vIdx);
-					idom[vIdx] = (semi[uIdx] < semi[vIdx]) ? uIdx : wIdx;
-				}
-			);
+			for (size_t vIdx: bucket[wIdx])
+			{
+				size_t uIdx = eval(vIdx);
+				solAssert(uIdx <= vIdx);
+				idom[vIdx] = (semi[uIdx] < semi[vIdx]) ? uIdx : wIdx;
+			}
 
 			// step 2
 			for (size_t vIdx: predecessors[wIdx])
