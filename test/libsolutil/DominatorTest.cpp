@@ -17,7 +17,7 @@
 /**
  * Unit tests for the algorithm to find dominators from a graph.
  */
-#include <libyul/backends/evm/Dominator.h>
+#include <libsolutil/Dominator.h>
 
 #include <test/libsolidity/util/SoltestErrors.h>
 
@@ -27,9 +27,9 @@
 #include <range/v3/view/transform.hpp>
 #include <range/v3/view/iota.hpp>
 
-using namespace solidity::yul;
+using namespace solidity::util;
 
-namespace solidity::yul::test
+namespace solidity::util::test
 {
 
 typedef std::pair<std::string, std::string> Edge;

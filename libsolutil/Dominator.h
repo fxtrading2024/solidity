@@ -23,7 +23,7 @@
  */
 #pragma once
 
-#include <libyul/backends/evm/ControlFlowGraph.h>
+#include <liblangutil/Exceptions.h>
 #include <libsolutil/Visitor.h>
 
 #include <range/v3/algorithm.hpp>
@@ -36,7 +36,7 @@
 #include <vector>
 #include <set>
 
-namespace solidity::yul
+namespace solidity::util
 {
 
 template<typename V, typename ForEachSuccessor>

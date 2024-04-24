@@ -31,6 +31,7 @@ set(libsolutil_sources
     libsolutil/Checksum.cpp
     libsolutil/CommonData.cpp
     libsolutil/CommonIO.cpp
+    libsolutil/DominatorTest.cpp
     libsolutil/FixedHash.cpp
     libsolutil/FunctionSelector.cpp
     libsolutil/IpfsHash.cpp
@@ -139,7 +140,6 @@ set(libyul_sources
     libyul/ControlFlowGraphTest.h
     libyul/ControlFlowSideEffectsTest.cpp
     libyul/ControlFlowSideEffectsTest.h
-    libyul/DominatorTest.cpp
     libyul/EVMCodeTransformTest.cpp
     libyul/EVMCodeTransformTest.h
     libyul/FunctionSideEffects.cpp
