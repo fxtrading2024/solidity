@@ -23,6 +23,8 @@
 
 #include <boost/test/unit_test.hpp>
 
+#include <fmt/format.h>
+
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/transform.hpp>
 #include <range/v3/view/iota.hpp>
@@ -669,9 +671,14 @@ BOOST_FIXTURE_TEST_CASE(check_dominance, DominatorFinderFixture)
 		{}
 	);
 
-	auto makeDominanceVertexRelation = [&](std::vector<size_t> _indices = {}){
+	// Helper function to create a dominance relation for a vertex with all other vertices.
+	//
+	// @param _indices: The indices of the vertices that the vertex dominates.
+	// @return: A vector of booleans where the index represents the vertex and the value
+	// represents if the vertex dominates the other vertex at that index.
+	auto makeDominanceVertexRelation = [&](std::vector<size_t> const& _indices = {}){
 		std::vector<bool> dominance(test.numVertices, false);
-		for (auto i: _indices)
+		for (size_t i: _indices)
 		{
 			soltestAssert(i < test.numVertices);
 			dominance[i] = true;
@@ -681,9 +688,9 @@ BOOST_FIXTURE_TEST_CASE(check_dominance, DominatorFinderFixture)
 
 	// Dominance truth table for all vertices.
 	// Note that it includes self-dominance relation.
-	std::vector<std::vector<bool>> expectedDominanceByVertex = {
-		makeDominanceVertexRelation(ranges::views::iota(0u, static_cast<unsigned>(test.numVertices)) | ranges::to<std::vector<size_t>>), // A dominates all vertices, including itself
-		makeDominanceVertexRelation(ranges::views::iota(1u, static_cast<unsigned>(test.numVertices)) | ranges::to<std::vector<size_t>>), // B, C, D, E, F, G, H
+	std::vector<std::vector<bool>> expectedDominanceTable = {
+		std::vector<bool>(test.numVertices, true),    // A dominates all vertices, including itself
+		makeDominanceVertexRelation({1,2,3,4,5,6,7}), // B, C, D, E, F, G, H
 		makeDominanceVertexRelation({2, 6, 7}), // C, G, H
 		makeDominanceVertexRelation({3, 4}),    // D, E
 		makeDominanceVertexRelation({4}),       // E
@@ -692,7 +699,7 @@ BOOST_FIXTURE_TEST_CASE(check_dominance, DominatorFinderFixture)
 		makeDominanceVertexRelation({7})        // H
 	};
 
-	soltestAssert(expectedDominanceByVertex.size() == test.numVertices);
+	soltestAssert(expectedDominanceTable.size() == test.numVertices);
 
 	TestDominatorFinder dominatorFinder(*test.entry, test.numVertices);
 
@@ -703,18 +710,24 @@ BOOST_FIXTURE_TEST_CASE(check_dominance, DominatorFinderFixture)
 		return std::make_pair(pair.second, pair.first);
 	}) | ranges::to<std::map<size_t, std::string>>;
 
-	for (size_t i = 0; i < expectedDominanceByVertex.size(); ++i)
+	// Check if the dominance table is as expected.
+	for (size_t i = 0; i < expectedDominanceTable.size(); ++i)
 	{
-		soltestAssert(expectedDominanceByVertex[i].size() == test.numVertices);
-		for (size_t j = 0; j < expectedDominanceByVertex[i].size(); ++j)
+		soltestAssert(expectedDominanceTable[i].size() == test.numVertices);
+		for (size_t j = 0; j < expectedDominanceTable[i].size(); ++j)
 		{
-			bool result = dominatorFinder.dominates(*test.vertices[reverseDFSIndicesMap[i]], *test.vertices[reverseDFSIndicesMap[j]]);
+			bool iDominatesJ = dominatorFinder.dominates(*test.vertices[reverseDFSIndicesMap[i]], *test.vertices[reverseDFSIndicesMap[j]]);
 			BOOST_CHECK_MESSAGE(
-				result == expectedDominanceByVertex[i][j],
-				"Vertex: " + reverseDFSIndicesMap[i] + " (" + std::to_string(i) + ") expected to" +
-				(expectedDominanceByVertex[i][j] ? "" : " not") +
-				" dominates vertex " + reverseDFSIndicesMap[j] + " (" + std::to_string(j) + ") but returned: " +
-				std::to_string(result)
+				iDominatesJ == expectedDominanceTable[i][j],
+				fmt::format(
+					"Vertex: {} ({}) expected to {} dominate vertex {} ({}) but returned: {}\n",
+					reverseDFSIndicesMap[i],
+					i,
+					(iDominatesJ ? "" : "not"),
+					reverseDFSIndicesMap[j],
+					j,
+					iDominatesJ
+				)
 			);
 		}
 	}
