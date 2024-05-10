@@ -247,7 +247,7 @@ private:
 			// instead of ``parent[w]`` in the end of the loop as described in the original paper.
 			// Inverting those steps ensures that a bucket is only processed once and
 			// it does not need to be erased.
-			// The optimization proposal is available here: https://jgaa.info/accepted/2006/GeorgiadisTarjanWerneck2006.10.1.pdf pg.77
+			// The optimization proposal is available here: https://jgaa.info/index.php/jgaa/article/view/paper119/2847 pg.77
 			for (size_t vIdx: bucket[wIdx])
 			{
 				size_t uIdx = eval(vIdx);
