@@ -24,6 +24,7 @@
 #include <libyul/AST.h>
 #include <libyul/AsmParser.h>
 #include <libyul/Exceptions.h>
+#include <libyul/Utilities.h>
 #include <liblangutil/ErrorReporter.h>
 #include <liblangutil/Exceptions.h>
 #include <liblangutil/Scanner.h>
@@ -501,11 +502,11 @@ ForLoop Parser::parseForLoop()
 	return forLoop;
 }
 
-Expression Parser::parseExpression()
+Expression Parser::parseExpression(bool _unlimitedLiteralArgument)
 {
 	RecursionGuard recursionGuard(*this);
 
-	std::variant<Literal, Identifier> operation = parseLiteralOrIdentifier();
+	std::variant<Literal, Identifier> operation = parseLiteralOrIdentifier(_unlimitedLiteralArgument);
 	return visit(GenericVisitor{
 		[&](Identifier& _identifier) -> Expression
 		{
@@ -526,7 +527,7 @@ Expression Parser::parseExpression()
 	}, operation);
 }
 
-std::variant<Literal, Identifier> Parser::parseLiteralOrIdentifier()
+std::variant<Literal, Identifier> Parser::parseLiteralOrIdentifier(bool _unlimitedLiteralArgument)
 {
 	RecursionGuard recursionGuard(*this);
 	switch (currentToken())
@@ -566,7 +567,7 @@ std::variant<Literal, Identifier> Parser::parseLiteralOrIdentifier()
 		Literal literal{
 			createDebugData(),
 			kind,
-			YulString{currentLiteral()},
+			valueOfLiteral(currentLiteral(), kind, _unlimitedLiteralArgument && kind == LiteralKind::String),
 			kind == LiteralKind::Boolean ? m_dialect.boolType : m_dialect.defaultType
 		};
 		advance();
@@ -670,15 +671,20 @@ FunctionCall Parser::parseCall(std::variant<Literal, Identifier>&& _initialOp)
 	FunctionCall ret;
 	ret.functionName = std::move(std::get<Identifier>(_initialOp));
 	ret.debugData = ret.functionName.debugData;
-
+	auto const isUnlimitedLiteralArgument = [f=m_dialect.builtin(ret.functionName.name)](size_t const index) {
+		if (f && index < f->literalArguments.size())
+			return f->literalArgument(index).has_value();
+		return false;
+	};
+	size_t argumentIndex {0};
 	expectToken(Token::LParen);
 	if (currentToken() != Token::RParen)
 	{
-		ret.arguments.emplace_back(parseExpression());
+		ret.arguments.emplace_back(parseExpression(isUnlimitedLiteralArgument(argumentIndex++)));
 		while (currentToken() != Token::RParen)
 		{
 			expectToken(Token::Comma);
-			ret.arguments.emplace_back(parseExpression());
+			ret.arguments.emplace_back(parseExpression(isUnlimitedLiteralArgument(argumentIndex++)));
 		}
 	}
 	updateLocationEndFrom(ret.debugData, currentLocation());
