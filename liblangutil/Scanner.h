@@ -62,15 +62,12 @@
 namespace solidity::langutil
 {
 
-class AstRawString;
-class AstValueFactory;
-class ParserRecorder;
-
 enum class ScannerKind
 {
 	Solidity,
 	Yul,
-	ExperimentalSolidity
+	ExperimentalSolidity,
+	SpecialComment
 };
 
 enum class ScannerError
