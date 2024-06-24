@@ -793,8 +793,8 @@ BOOST_AUTO_TEST_CASE(customSourceLocations_single_quote)
 		///
 		{}
 	)";
-	EVMDialectTyped const& dialect = EVMDialectTyped::instance(EVMVersion{});
-	std::shared_ptr<Block> result = parse(sourceText, dialect, reporter);
+	YulNameRepository repository(EVMDialectTyped::instance(EVMVersion{}));
+	std::shared_ptr<Block> result = parse(sourceText, repository, reporter);
 	BOOST_REQUIRE(!!result);
 	BOOST_REQUIRE(errorList.size() == 1);
 	BOOST_TEST(errorList[0]->type() == Error::Type::SyntaxError);
@@ -810,8 +810,8 @@ BOOST_AUTO_TEST_CASE(customSourceLocations_two_snippets_with_hex_comment)
 		/// @src 0:111:222 hex"abc"@src 1:333:444 "abc"
 		{}
 	)";
-	EVMDialectTyped const& dialect = EVMDialectTyped::instance(EVMVersion{});
-	std::shared_ptr<Block> result = parse(sourceText, dialect, reporter);
+	YulNameRepository repository(EVMDialectTyped::instance(EVMVersion{}));
+	std::shared_ptr<Block> result = parse(sourceText, repository, reporter);
 	BOOST_REQUIRE(!!result && errorList.size() == 0);
 	// the second source location is not parsed as such, as the hex string isn't interpreted as snippet but
 	// as the beginning of the tail in AsmParser
@@ -830,8 +830,8 @@ BOOST_AUTO_TEST_CASE(customSourceLocations_multi_line_source_loc)
 		/// " @src 0:333:444
 		{}
 	)";
-	EVMDialectTyped const& dialect = EVMDialectTyped::instance(EVMVersion{});
-	std::shared_ptr<Block> result = parse(sourceText, dialect, reporter);
+	YulNameRepository repository(EVMDialectTyped::instance(EVMVersion{}));
+	std::shared_ptr<Block> result = parse(sourceText, repository, reporter);
 	BOOST_REQUIRE(!!result && errorList.empty());
 	CHECK_LOCATION(result->debugData->originLocation, "source0", 333, 444);
 }

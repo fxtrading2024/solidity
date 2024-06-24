@@ -30,20 +30,11 @@ using namespace solidity::langutil;
 Literal Dialect::zeroLiteralForType(YulName const _type, YulNameRepository const& _nameRepository) const
 {
 	if (_type == _nameRepository.predefined().boolType && _type != _nameRepository.predefined().defaultType)
-		return {DebugData::create(), LiteralKind::Boolean, LiteralValue(false), _type};
-	return {DebugData::create(), LiteralKind::Number, LiteralValue(0, std::nullopt), _type};
+		return {DebugData::create(), LiteralKind::Boolean, LiteralValue{0, "false"}, _type};
+	return {DebugData::create(), LiteralKind::Number, LiteralValue{0, "0"}, _type};
 }
 
-
-Literal Dialect::trueLiteral() const
-{
-	if (boolType != defaultType)
-		return {DebugData::create(), LiteralKind::Boolean, LiteralValue(true), boolType};
-	else
-		return {DebugData::create(), LiteralKind::Number, LiteralValue(1), defaultType};
-}
-
-bool Dialect::validTypeForLiteral(LiteralKind _kind, LiteralValue const&, YulString _type) const
+bool Dialect::validTypeForLiteral(LiteralKind _kind, LiteralValue const&, std::string_view _type) const
 {
 	if (_kind == LiteralKind::Boolean)
 		return _type == boolType;
