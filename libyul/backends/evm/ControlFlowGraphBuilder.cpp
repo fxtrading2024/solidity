@@ -49,14 +49,23 @@ using namespace solidity::yul;
 
 namespace
 {
+
+/// Collects all the entry blocks from the CFG.
+std::list<CFG::BasicBlock*> collectEntryBlocksSubGraphs(CFG& _cfg)
+{
+	std::list<CFG::BasicBlock*> entryBlocks;
+	entryBlocks.push_back(_cfg.entry);
+
+	for (auto const& functionInfo: _cfg.functionInfo | ranges::views::values)
+		entryBlocks.push_back(functionInfo.entry);
+	return entryBlocks;
+}
+
 /// Removes edges to blocks that are not reachable.
-void cleanUnreachable(CFG& _cfg)
+void cleanUnreachable(std::list<CFG::BasicBlock*> _entryBlocks)
 {
 	// Determine which blocks are reachable from the entry.
-	util::BreadthFirstSearch<CFG::BasicBlock*> reachabilityCheck{{_cfg.entry}};
-	for (auto const& functionInfo: _cfg.functionInfo | ranges::views::values)
-		reachabilityCheck.verticesToTraverse.emplace_back(functionInfo.entry);
-
+	util::BreadthFirstSearch<CFG::BasicBlock*> reachabilityCheck{_entryBlocks};
 	reachabilityCheck.run([&](CFG::BasicBlock* _node, auto&& _addChild) {
 		visit(util::GenericVisitor{
 			[&](CFG::BasicBlock::Jump const& _jump) {
@@ -220,8 +229,8 @@ std::unique_ptr<CFG> ControlFlowGraphBuilder::build(
 	builder.m_currentBlock = result->entry;
 	builder(_block);
 
-	cleanUnreachable(*result);
-	CFGDominatorFinder findDominators(*result->entry, result->blocks.size());
+	auto entryBlocks = collectEntryBlocksSubGraphs(*result);
+	cleanUnreachable(entryBlocks);
 	markRecursiveCalls(*result);
 	markStartsOfSubGraphs(*result);
 	markNeedsCleanStack(*result);
@@ -560,6 +569,8 @@ Stack const& ControlFlowGraphBuilder::visitFunctionCall(FunctionCall const& _cal
 	if (!canContinue)
 	{
 		m_currentBlock->exit = CFG::BasicBlock::Terminated{};
+		// We add a new block after a terminating one is created so there is always a current block to work on.
+		// It won't be reachable and cleanUnreachable should effectively remove it from the graph.
 		m_currentBlock = &m_graph.makeBlock(debugDataOf(*m_currentBlock));
 	}
 	return *output;

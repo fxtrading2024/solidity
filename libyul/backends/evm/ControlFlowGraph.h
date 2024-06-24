@@ -258,6 +258,7 @@ struct CFG
 	std::list<Scope::Function const*> functions;
 
 	/// Container for blocks for explicit ownership.
+	/// NOTE: Not all blocks in this list are expected to be reachable.
 	std::list<BasicBlock> blocks;
 	/// Container for generated variables for explicit ownership.
 	/// Ghost variables are generated to store switch conditions when transforming the control flow
