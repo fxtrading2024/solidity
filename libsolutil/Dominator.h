@@ -36,22 +36,32 @@
 #include <vector>
 #include <set>
 
+namespace
+{
+	template <typename, typename = void>
+	struct has_id : std::false_type {};
+
+	template <typename T>
+	struct has_id<T, std::void_t<decltype(std::declval<T>().id)>> : std::true_type {};
+}
+
 namespace solidity::util
 {
 
 /// DominatorFinder computes the dominator tree of a directed graph.
-/// V is the type of the vertex.
-/// VId is the type of the vertex identifier. VIds should be unique and comparable.
+/// V is the type of the vertex and it is assumed to have a unique identifier.
 /// ForEachSuccessor is a visitor that visits the successors of a vertex.
-/// TODO: pass the graph or an adjacency list as a parameter to the constructor.
-template<typename V, typename VId, typename ForEachSuccessor>
+template<typename V, typename ForEachSuccessor>
 class DominatorFinder
 {
+static_assert(has_id<V>::value, "vertex must define id member");
+using VId = typename V::Id;
+
 public:
 
-	DominatorFinder(V const& _entry, VId const& _entryId, size_t _numVertices):
+	DominatorFinder(V const& _entry, size_t _numVertices):
 		m_verticesInDFSOrder(_numVertices),
-		m_immediateDominators(findDominators(_entry, _entryId, _numVertices))
+		m_immediateDominators(findDominators(_entry, _numVertices))
 	{
 		buildDominatorTree();
 	}
@@ -164,7 +174,7 @@ public:
 	}
 
 private:
-	std::vector<size_t> findDominators(V const& _entry, VId const& _entryId, size_t _numVertices)
+	std::vector<size_t> findDominators(V const& _entry, size_t _numVertices)
 	{
 		solAssert(_numVertices > 0);
 		// semi(w): The DFS index of the semidominator of ``w``.
@@ -214,29 +224,29 @@ private:
 		// The number of vertices reached during the DFS.
 		// The vertices are indexed based on this number.
 		size_t dfIdx = 0;
-		auto dfs = [&](V const& _v, VId const& _vId, auto _dfs) -> void {
-			auto [_, inserted] = visited.insert(_vId);
+		auto dfs = [&](V const& _v, auto _dfs) -> void {
+			auto [_, inserted] = visited.insert(_v.id);
 			if (!inserted)
 				return;
-			m_verticesInDFSOrder[dfIdx] = _vId;
-			m_dfsIndicesMap[_vId] = dfIdx;
+			m_verticesInDFSOrder[dfIdx] = _v.id;
+			m_dfsIndicesMap[_v.id] = dfIdx;
 			semi[dfIdx] = dfIdx;
 			label[dfIdx] = dfIdx;
 			// NOTE: Since each vertex is only visited once, incrementing dfIdx before visiting successors ensures
 			// it points to the next vertex to be visited (i.e., w).
 			// This is because we do not know the index of a vertex before visiting them.
 			dfIdx++;
-			ForEachSuccessor{}(_v, _vId, [&](V const& w, VId wId) {
-				if (!visited.count(wId))
+			ForEachSuccessor{}(_v, [&](V const& w) {
+				if (!visited.count(w.id))
 				{
 					// Here, ``dfIdx`` is the index of the vertex ``w`` in the DFS order.
-					parent[dfIdx] = m_dfsIndicesMap[_vId];
-					_dfs(w, wId, _dfs);
+					parent[dfIdx] = m_dfsIndicesMap[_v.id];
+					_dfs(w, _dfs);
 				}
-				predecessors[m_dfsIndicesMap[wId]].insert(m_dfsIndicesMap[_vId]);
+				predecessors[m_dfsIndicesMap[w.id]].insert(m_dfsIndicesMap[_v.id]);
 			});
 		};
-		dfs(_entry, _entryId, dfs);
+		dfs(_entry, dfs);
 
 		// Process the vertices in decreasing order of the DFS number
 		for (size_t wIdx: m_verticesInDFSOrder | ranges::views::reverse | ranges::views::transform(toIdx))
@@ -299,6 +309,7 @@ private:
 	std::vector<VId> m_verticesInDFSOrder;
 
 	/// Maps a Vertex by id to its index in the DFS order.
+	/// TODO: convert this to vector id-based index.
 	std::map<VId, size_t> m_dfsIndicesMap;
 
 	/// Immediate dominators by index.
@@ -306,7 +317,7 @@ private:
 	/// The entry vertex is the first element of the vector.
 	///
 	/// e.g. to get the immediate dominator of a Vertex w:
-	/// idomIdx = m_immediateDominators[m_dfsIndicesMap[wId]]
+	/// idomIdx = m_immediateDominators[m_dfsIndicesMap[w.id]]
 	/// idomVertexId = m_verticesInDFSOrder[domIdx]
 	std::vector<size_t> m_immediateDominators;
 

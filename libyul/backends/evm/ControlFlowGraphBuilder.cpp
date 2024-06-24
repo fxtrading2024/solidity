@@ -26,6 +26,7 @@
 #include <libyul/ControlFlowSideEffectsCollector.h>
 
 #include <libsolutil/cxx20.h>
+#include <libsolutil/Dominator.h>
 #include <libsolutil/Visitor.h>
 #include <libsolutil/Algorithms.h>
 
@@ -220,6 +221,7 @@ std::unique_ptr<CFG> ControlFlowGraphBuilder::build(
 	builder(_block);
 
 	cleanUnreachable(*result);
+	CFGDominatorFinder findDominators(*result->entry, result->blocks.size());
 	markRecursiveCalls(*result);
 	markStartsOfSubGraphs(*result);
 	markNeedsCleanStack(*result);
