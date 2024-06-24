@@ -149,7 +149,6 @@ private:
 
 	std::shared_ptr<YulNameRepository> m_yulNameRepository;
 
-	Language m_language = Language::Assembly;
 	langutil::EVMVersion m_evmVersion;
 	std::optional<uint8_t> m_eofVersion;
 	solidity::frontend::OptimiserSettings m_optimiserSettings;
