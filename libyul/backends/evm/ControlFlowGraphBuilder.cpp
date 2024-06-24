@@ -50,6 +50,34 @@ using namespace solidity::yul;
 namespace
 {
 
+/// Counts the number of blocks reachable from each entry block.
+std::map<CFG::BasicBlock const*, size_t> countBlocksEachSubGraph(std::list<CFG::BasicBlock*> _entryBlocks)
+{
+	std::map<CFG::BasicBlock const*, size_t> reachableBlocksPerSubGraph;
+	for (CFG::BasicBlock const* entry: _entryBlocks)
+	{
+		util::BreadthFirstSearch<CFG::BasicBlock const*> reachabilityCheck{{entry}};
+		reachabilityCheck.run([&](CFG::BasicBlock const* _node, auto&& _addChild) {
+			reachableBlocksPerSubGraph[entry]++;
+			visit(util::GenericVisitor{
+				[&](CFG::BasicBlock::Jump const& _jump) {
+					_addChild(_jump.target);
+				},
+				[&](CFG::BasicBlock::ConditionalJump const& _jump) {
+					_addChild(_jump.zero);
+					_addChild(_jump.nonZero);
+				},
+				[](CFG::BasicBlock::FunctionReturn const&) {},
+				[](CFG::BasicBlock::Terminated const&) {},
+				[](CFG::BasicBlock::MainExit const&) {}
+			}, _node->exit);
+		});
+		reachabilityCheck.visited.clear();
+		reachabilityCheck.verticesToTraverse.clear();
+	}
+	return reachableBlocksPerSubGraph;
+}
+
 /// Collects all the entry blocks from the CFG.
 std::list<CFG::BasicBlock*> collectEntryBlocksSubGraphs(CFG& _cfg)
 {
@@ -231,6 +259,12 @@ std::unique_ptr<CFG> ControlFlowGraphBuilder::build(
 
 	auto entryBlocks = collectEntryBlocksSubGraphs(*result);
 	cleanUnreachable(entryBlocks);
+	std::map<CFG::BasicBlock const*, size_t> blocksPerSubGraphs = countBlocksEachSubGraph(entryBlocks);
+	for (auto entry: entryBlocks)
+	{
+		CFGDominatorFinder findDominators(*entry, blocksPerSubGraphs.at(entry));
+		// TODO: use dom info
+	}
 	markRecursiveCalls(*result);
 	markStartsOfSubGraphs(*result);
 	markNeedsCleanStack(*result);
