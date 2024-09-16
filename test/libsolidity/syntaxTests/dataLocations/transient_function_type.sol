@@ -7,5 +7,5 @@ contract C {
     function () internal internal transient fiit;
 }
 // ====
-// stopAfter: analysis
+// EVMVersion: >=cancun
 // ----

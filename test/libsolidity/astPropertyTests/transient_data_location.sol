@@ -1,8 +1,16 @@
 contract C {
-    /// TestVarDataLocation: storageLocation
-    /// TestVarName: name
-    uint transient transient;
+    /// TransientDataLocation: storageLocation
+    /// TransientVarName: name
+    uint transient x;
+    /// StorageDataLocation: storageLocation
+    /// StorageVarName: name
+    uint y;
+
 }
+// ====
+// EVMVersion: >=cancun
 // ----
-// TestVarDataLocation: transient
-// TestVarName: transient
+// TransientDataLocation: transient
+// TransientVarName: x
+// StorageDataLocation: default
+// StorageVarName: y

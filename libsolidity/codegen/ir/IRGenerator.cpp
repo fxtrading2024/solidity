@@ -39,6 +39,8 @@
 #include <libsolutil/Whiskers.h>
 #include <libsolutil/JSON.h>
 
+#include <range/v3/algorithm/all_of.hpp>
+
 #include <sstream>
 #include <variant>
 
@@ -101,10 +103,20 @@ std::string IRGenerator::generate(
 	std::map<ContractDefinition const*, std::string_view const> const& _otherYulSources
 )
 {
-	auto subObjectSources = [&_otherYulSources](std::set<ContractDefinition const*, ASTNode::CompareByID> const& subObjects) -> std::string
+	auto notTransient = [](VariableDeclaration const* _varDeclaration) {
+		solAssert(_varDeclaration);
+		return _varDeclaration->referenceLocation() != VariableDeclaration::Location::Transient;
+	};
+
+	solUnimplementedAssert(
+		ranges::all_of(_contract.stateVariables(), notTransient),
+		"Transient storage variables are not supported when compiling via IR."
+	);
+
+	auto subObjectSources = [&_otherYulSources](UniqueVector<ContractDefinition const*> const& _subObjects) -> std::string
 	{
 		std::string subObjectsSources;
-		for (ContractDefinition const* subObject: subObjects)
+		for (ContractDefinition const* subObject: _subObjects)
 			subObjectsSources += _otherYulSources.at(subObject);
 		return subObjectsSources;
 	};
@@ -821,8 +833,11 @@ std::string IRGenerator::initStateVariables(ContractDefinition const& _contract)
 {
 	IRGeneratorForStatements generator{m_context, m_utils, m_optimiserSettings};
 	for (VariableDeclaration const* variable: _contract.stateVariables())
+	{
+		solUnimplementedAssert(variable->referenceLocation() != VariableDeclaration::Location::Transient, "Transient storage variables not supported.");
 		if (!variable->isConstant())
 			generator.initializeStateVar(*variable);
+	}
 
 	return generator.code();
 }
@@ -1100,8 +1115,9 @@ void IRGenerator::resetContext(ContractDefinition const& _contract, ExecutionCon
 	m_context = std::move(newContext);
 
 	m_context.setMostDerivedContract(_contract);
-	for (auto const& var: ContractType(_contract).stateVariables())
-		m_context.addStateVariable(*std::get<0>(var), std::get<1>(var), std::get<2>(var));
+	for (auto const location: {DataLocation::Storage, DataLocation::Transient})
+		for (auto const& var: ContractType(_contract).stateVariables(location))
+			m_context.addStateVariable(*std::get<0>(var), std::get<1>(var), std::get<2>(var));
 }
 
 std::string IRGenerator::dispenseLocationComment(ASTNode const& _node)

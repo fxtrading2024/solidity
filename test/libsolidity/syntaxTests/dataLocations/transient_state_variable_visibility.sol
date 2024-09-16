@@ -8,5 +8,5 @@ contract C {
     uint transient private tprv;
 }
 // ====
-// stopAfter: parsing
+// EVMVersion: >=cancun
 // ----

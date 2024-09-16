@@ -66,7 +66,7 @@
 
 #include <libstdlib/stdlib.h>
 
-#include <libyul/YulString.h>
+#include <libyul/YulName.h>
 #include <libyul/AsmPrinter.h>
 #include <libyul/AsmJsonConverter.h>
 #include <libyul/YulStack.h>
@@ -111,6 +111,7 @@ static int g_compilerStackCounts = 0;
 
 CompilerStack::CompilerStack(ReadCallback::Callback _readFile):
 	m_readFile{std::move(_readFile)},
+	m_objectOptimizer(std::make_shared<yul::ObjectOptimizer>()),
 	m_errorReporter{m_errorList}
 {
 	// Because TypeProvider is currently a singleton API, we must ensure that
@@ -313,7 +314,7 @@ void CompilerStack::reset(bool _keepSettings)
 		m_viaIR = false;
 		m_evmVersion = langutil::EVMVersion();
 		m_modelCheckerSettings = ModelCheckerSettings{};
-		m_generateIR = false;
+		m_irOutputSelection = IROutputSelection::None;
 		m_revertStrings = RevertStrings::Default;
 		m_optimiserSettings = OptimiserSettings::minimal();
 		m_metadataLiteralSources = false;
@@ -728,8 +729,17 @@ bool CompilerStack::compile(State _stopAfter)
 				{
 					try
 					{
-						if ((m_generateEvmBytecode && m_viaIR) || m_generateIR)
-							generateIR(*contract);
+						// NOTE: Bytecode generation via IR always uses Contract::yulIROptimized.
+						// When optimization is not enabled, that member simply contains unoptimized code.
+						bool needIROutput =
+							(m_generateEvmBytecode && m_viaIR) ||
+							m_irOutputSelection != IROutputSelection::None;
+						bool needUnoptimizedIROutputOnly =
+							!(m_generateEvmBytecode && m_viaIR) &&
+							m_irOutputSelection != IROutputSelection::UnoptimizedAndOptimized;
+
+						if (needIROutput)
+							generateIR(*contract, needUnoptimizedIROutputOnly);
 						if (m_generateEvmBytecode)
 						{
 							if (m_viaIR)
@@ -837,9 +847,9 @@ Json CompilerStack::generatedSources(std::string const& _contractName, bool _run
 				ErrorReporter errorReporter(errors);
 				CharStream charStream(source, sourceName);
 				yul::EVMDialect const& dialect = yul::EVMDialect::strictAssemblyForEVM(m_evmVersion);
-				std::shared_ptr<yul::Block> parserResult = yul::Parser{errorReporter, dialect}.parse(charStream);
+				std::shared_ptr<yul::AST> parserResult = yul::Parser{errorReporter, dialect}.parse(charStream);
 				solAssert(parserResult, "");
-				sources[0]["ast"] = yul::AsmJsonConverter{sourceIndex}(*parserResult);
+				sources[0]["ast"] = yul::AsmJsonConverter{sourceIndex}(parserResult->root());
 				sources[0]["name"] = sourceName;
 				sources[0]["id"] = sourceIndex;
 				sources[0]["language"] = "Yul";
@@ -854,6 +864,10 @@ std::string const* CompilerStack::sourceMapping(std::string const& _contractName
 {
 	solAssert(m_stackState == CompilationSuccessful, "Compilation was not successful.");
 
+	// TODO
+	if (m_eofVersion.has_value())
+		return nullptr;
+
 	Contract const& c = contract(_contractName);
 	if (!c.sourceMapping)
 	{
@@ -866,6 +880,10 @@ std::string const* CompilerStack::sourceMapping(std::string const& _contractName
 std::string const* CompilerStack::runtimeSourceMapping(std::string const& _contractName) const
 {
 	solAssert(m_stackState == CompilationSuccessful, "Compilation was not successful.");
+
+	// TODO
+	if (m_eofVersion.has_value())
+		return nullptr;
 
 	Contract const& c = contract(_contractName);
 	if (!c.runtimeSourceMapping)
@@ -912,6 +930,16 @@ Json const& CompilerStack::yulIRAst(std::string const& _contractName) const
 	solAssert(m_stackState == CompilationSuccessful, "Compilation was not successful.");
 	solUnimplementedAssert(!isExperimentalSolidity());
 	return contract(_contractName).yulIRAst;
+}
+
+Json const& CompilerStack::yulCFGJson(std::string const& _contractName) const
+{
+	if (m_stackState != CompilationSuccessful)
+		solThrow(CompilerError, "Compilation was not successful.");
+
+	solUnimplementedAssert(!isExperimentalSolidity());
+
+	return contract(_contractName).yulCFGJson;
 }
 
 std::string const& CompilerStack::yulIROptimized(std::string const& _contractName) const
@@ -1006,7 +1034,22 @@ Json const& CompilerStack::storageLayout(Contract const& _contract) const
 	solAssert(_contract.contract);
 	solUnimplementedAssert(!isExperimentalSolidity());
 
-	return _contract.storageLayout.init([&]{ return StorageLayout().generate(*_contract.contract); });
+	return _contract.storageLayout.init([&]{ return StorageLayout().generate(*_contract.contract, DataLocation::Storage); });
+}
+
+Json const& CompilerStack::transientStorageLayout(std::string const& _contractName) const
+{
+	solAssert(m_stackState >= AnalysisSuccessful, "Analysis was not successful.");
+	return transientStorageLayout(contract(_contractName));
+}
+
+Json const& CompilerStack::transientStorageLayout(Contract const& _contract) const
+{
+	solAssert(m_stackState >= AnalysisSuccessful, "Analysis was not successful.");
+	solAssert(_contract.contract);
+	solUnimplementedAssert(!isExperimentalSolidity());
+
+	return _contract.transientStorageLayout.init([&]{ return StorageLayout().generate(*_contract.contract, DataLocation::Transient); });
 }
 
 Json const& CompilerStack::natspecUser(std::string const& _contractName) const
@@ -1313,9 +1356,9 @@ void CompilerStack::assembleYul(
 		// Assemble deployment (incl. runtime)  object.
 		compiledContract.object = compiledContract.evmAssembly->assemble();
 	}
-	catch (evmasm::AssemblyException const&)
+	catch (evmasm::AssemblyException const& error)
 	{
-		solAssert(false, "Assembly exception for bytecode");
+		solAssert(false, "Assembly exception for bytecode: "s + error.what());
 	}
 	solAssert(compiledContract.object.immutableReferences.empty(), "Leftover immutables.");
 
@@ -1326,9 +1369,9 @@ void CompilerStack::assembleYul(
 		// Assemble runtime object.
 		compiledContract.runtimeObject = compiledContract.evmRuntimeAssembly->assemble();
 	}
-	catch (evmasm::AssemblyException const&)
+	catch (evmasm::AssemblyException const& error)
 	{
-		solAssert(false, "Assembly exception for deployed bytecode");
+		solAssert(false, "Assembly exception for deployed bytecode"s + error.what());
 	}
 
 	// Throw a warning if EIP-170 limits are exceeded:
@@ -1402,7 +1445,7 @@ void CompilerStack::compileContract(
 	assembleYul(_contract, compiler->assemblyPtr(), compiler->runtimeAssemblyPtr());
 }
 
-void CompilerStack::generateIR(ContractDefinition const& _contract)
+void CompilerStack::generateIR(ContractDefinition const& _contract, bool _unoptimizedOnly)
 {
 	solAssert(m_stackState >= AnalysisSuccessful, "");
 
@@ -1420,7 +1463,7 @@ void CompilerStack::generateIR(ContractDefinition const& _contract)
 
 	std::string dependenciesSource;
 	for (auto const& [dependency, referencee]: _contract.annotation().contractDependencies)
-		generateIR(*dependency);
+		generateIR(*dependency, _unoptimizedOnly);
 
 	if (!_contract.canBeDeployed())
 		return;
@@ -1464,25 +1507,30 @@ void CompilerStack::generateIR(ContractDefinition const& _contract)
 		);
 	}
 
-	yul::YulStack stack(
+	YulStack stack(
 		m_evmVersion,
 		m_eofVersion,
-		yul::YulStack::Language::StrictAssembly,
+		YulStack::Language::StrictAssembly,
 		m_optimiserSettings,
-		m_debugInfoSelection
+		m_debugInfoSelection,
+		m_objectOptimizer
 	);
 	bool yulAnalysisSuccessful = stack.parseAndAnalyze("", compiledContract.yulIR);
 	solAssert(
 		yulAnalysisSuccessful,
 		compiledContract.yulIR + "\n\n"
 		"Invalid IR generated:\n" +
-		langutil::SourceReferenceFormatter::formatErrorInformation(stack.errors(), stack) + "\n"
+		SourceReferenceFormatter::formatErrorInformation(stack.errors(), stack) + "\n"
 	);
 
 	compiledContract.yulIRAst = stack.astJson();
-	stack.optimize();
-	compiledContract.yulIROptimized = stack.print(this);
-	compiledContract.yulIROptimizedAst = stack.astJson();
+	compiledContract.yulCFGJson = stack.cfgJson();
+	if (!_unoptimizedOnly)
+	{
+		stack.optimize();
+		compiledContract.yulIROptimized = stack.print(this);
+		compiledContract.yulIROptimizedAst = stack.astJson();
+	}
 }
 
 void CompilerStack::generateEVMFromIR(ContractDefinition const& _contract)
@@ -1503,7 +1551,8 @@ void CompilerStack::generateEVMFromIR(ContractDefinition const& _contract)
 		m_eofVersion,
 		yul::YulStack::Language::StrictAssembly,
 		m_optimiserSettings,
-		m_debugInfoSelection
+		m_debugInfoSelection,
+		m_objectOptimizer
 	);
 	bool analysisSuccessful = stack.parseAndAnalyze("", compiledContract.yulIROptimized);
 	solAssert(analysisSuccessful);

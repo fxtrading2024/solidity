@@ -1312,7 +1312,7 @@ void CHC::resetSourceAnalysis()
 		auto smtlib2Interface = dynamic_cast<CHCSmtLib2Interface*>(m_interface.get());
 		solAssert(smtlib2Interface);
 		smtlib2Interface->reset();
-		m_context.setSolver(smtlib2Interface->smtlib2Interface());
+		m_context.setSolver(smtlib2Interface);
 	}
 
 	m_context.reset();
@@ -1657,11 +1657,6 @@ smtutil::Expression CHC::error()
 	return (*m_errorPredicate)({});
 }
 
-smtutil::Expression CHC::error(unsigned _idx)
-{
-	return m_errorPredicate->functor(_idx)({});
-}
-
 smtutil::Expression CHC::initializer(ContractDefinition const& _contract, ContractDefinition const& _contractContext)
 {
 	return predicate(*m_contractInitializers.at(&_contractContext).at(&_contract));
@@ -1748,7 +1743,6 @@ void CHC::createErrorBlock()
 		"error_target_" + std::to_string(m_context.newUniqueId()),
 		PredicateType::Error
 	);
-	m_interface->registerRelation(m_errorPredicate->functor());
 }
 
 void CHC::connectBlocks(smtutil::Expression const& _from, smtutil::Expression const& _to, smtutil::Expression const& _constraints)
@@ -1922,11 +1916,8 @@ void CHC::addRule(smtutil::Expression const& _rule, std::string const& _ruleName
 	m_interface->addRule(_rule, _ruleName);
 }
 
-std::tuple<CheckResult, smtutil::Expression, CHCSolverInterface::CexGraph> CHC::query(smtutil::Expression const& _query, langutil::SourceLocation const& _location)
+CHCSolverInterface::QueryResult CHC::query(smtutil::Expression const& _query, langutil::SourceLocation const& _location)
 {
-	CheckResult result;
-	smtutil::Expression invariant(true);
-	CHCSolverInterface::CexGraph cex;
 	if (m_settings.printQuery)
 	{
 		auto smtLibInterface = dynamic_cast<CHCSmtLib2Interface*>(m_interface.get());
@@ -1937,8 +1928,8 @@ std::tuple<CheckResult, smtutil::Expression, CHCSolverInterface::CexGraph> CHC::
 			"CHC: Requested query:\n" + smtLibCode
 		);
 	}
-	std::tie(result, invariant, cex) = m_interface->query(_query);
-	switch (result)
+	auto result = m_interface->query(_query);
+	switch (result.answer)
 	{
 	case CheckResult::SATISFIABLE:
 	{
@@ -1952,13 +1943,10 @@ std::tuple<CheckResult, smtutil::Expression, CHCSolverInterface::CexGraph> CHC::
 			solAssert(spacer, "");
 			spacer->setSpacerOptions(false);
 
-			CheckResult resultNoOpt;
-			smtutil::Expression invariantNoOpt(true);
-			CHCSolverInterface::CexGraph cexNoOpt;
-			std::tie(resultNoOpt, invariantNoOpt, cexNoOpt) = m_interface->query(_query);
+			auto resultNoOpt = m_interface->query(_query);
 
-			if (resultNoOpt == CheckResult::SATISFIABLE)
-				cex = std::move(cexNoOpt);
+			if (resultNoOpt.answer == CheckResult::SATISFIABLE)
+				result.cex = std::move(resultNoOpt.cex);
 
 			spacer->setSpacerOptions(true);
 #else
@@ -1968,7 +1956,6 @@ std::tuple<CheckResult, smtutil::Expression, CHCSolverInterface::CexGraph> CHC::
 		break;
 	}
 	case CheckResult::UNSATISFIABLE:
-		break;
 	case CheckResult::UNKNOWN:
 		break;
 	case CheckResult::CONFLICTING:
@@ -1978,7 +1965,7 @@ std::tuple<CheckResult, smtutil::Expression, CHCSolverInterface::CexGraph> CHC::
 		m_errorReporter.warning(1218_error, _location, "CHC: Error trying to invoke SMT solver.");
 		break;
 	}
-	return {result, invariant, cex};
+	return result;
 }
 
 void CHC::verificationTargetEncountered(
@@ -2419,22 +2406,17 @@ std::map<unsigned, std::vector<unsigned>> CHC::summaryCalls(CHCSolverInterface::
 			// nondet_call_<CALLID>_<suffix>
 			// Those have the extra unique <CALLID> numbers based on the traversal order, and are necessary
 			// to infer the call order so that's shown property in the counterexample trace.
-			// Predicates that do not have a CALLID have a predicate id at the end of <suffix>,
-			// so the assertion below should still hold.
+			// For other predicates, we do not care.
 			auto beg = _s.data();
 			while (beg != _s.data() + _s.size() && !isDigit(*beg)) ++beg;
-			auto end = beg;
-			while (end != _s.data() + _s.size() && isDigit(*end)) ++end;
-
-			solAssert(beg != end, "Expected to find numerical call or predicate id.");
-
-			int result;
-			auto [p, ec] = std::from_chars(beg, end, result);
-			solAssert(ec == std::errc(), "Id should be a number.");
-
+			int result = -1;
+			static_cast<void>(std::from_chars(beg, _s.data() + _s.size(), result));
 			return result;
 		};
-		return extract(_graph.nodes.at(_a).name) > extract(_graph.nodes.at(_b).name);
+		auto anum = extract(_graph.nodes.at(_a).name);
+		auto bnum = extract(_graph.nodes.at(_b).name);
+		// The second part of the condition is needed to ensure that two different predicates are not considered equal
+		return (anum > bnum) || (anum == bnum && _graph.nodes.at(_a).name > _graph.nodes.at(_b).name);
 	};
 
 	std::queue<std::pair<unsigned, unsigned>> q;
